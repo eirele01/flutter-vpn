@@ -1,3 +1,6 @@
+##Staging
+January 1, 2026, start of the project
+
 A new Flutter project.
 
 ## Getting Started
