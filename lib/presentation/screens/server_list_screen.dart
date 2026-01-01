@@ -12,7 +12,7 @@ class ServerListScreen extends ConsumerStatefulWidget {
 }
 
 class _ServerListScreenState extends ConsumerState<ServerListScreen> {
-  String _sortBy = 'Best Match';
+  String _sortBy = 'All'; // All, Best Match, Speed, Ping
   String _searchQuery = '';
 
   @override
@@ -64,13 +64,13 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
+                      _buildFilterChip('All'),
+                      const SizedBox(width: 8),
                       _buildFilterChip('Best Match'),
                       const SizedBox(width: 8),
                       _buildFilterChip('Speed'),
                       const SizedBox(width: 8),
                       _buildFilterChip('Ping'),
-                      const SizedBox(width: 8),
-                      _buildFilterChip('Sessions'),
                     ],
                   ),
                 ),
@@ -99,10 +99,14 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                   filtered.sort((a, b) => b.speed.compareTo(a.speed));
                 } else if (_sortBy == 'Ping') {
                   filtered.sort((a, b) => a.ping.compareTo(b.ping));
-                } else if (_sortBy == 'Sessions') {
-                  filtered.sort(
-                    (a, b) => a.numVpnSessions.compareTo(b.numVpnSessions),
-                  );
+                } else if (_sortBy == 'All') {
+                  filtered.sort((a, b) {
+                    // Primary: Country Name (Alphabetical)
+                    int cmp = a.countryLong.compareTo(b.countryLong);
+                    if (cmp != 0) return cmp;
+                    // Secondary: Quality Score
+                    return b.qualityScore.compareTo(a.qualityScore);
+                  });
                 } else {
                   filtered.sort(
                     (a, b) => b.qualityScore.compareTo(a.qualityScore),

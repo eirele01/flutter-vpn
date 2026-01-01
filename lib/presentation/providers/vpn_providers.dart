@@ -315,10 +315,7 @@ class VpnController extends StateNotifier<VpnState> {
     }
 
     try {
-      await _engine.connect(
-        config,
-        "${server.countryLong} - ${server.hostName}",
-      );
+      await _engine.connect(config, server.countryLong);
     } catch (e) {
       state = state.copyWith(stage: 'error', status: e.toString());
     }
@@ -368,10 +365,7 @@ class VpnController extends StateNotifier<VpnState> {
         continue;
       }
 
-      await _engine.connect(
-        config,
-        "${server.countryLong} - ${server.hostName}",
-      );
+      await _engine.connect(config, server.countryLong);
 
       // Wait for result with timeout
       final success = await _waitForConnection(
