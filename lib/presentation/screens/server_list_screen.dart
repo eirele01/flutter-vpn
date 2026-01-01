@@ -12,166 +12,213 @@ class ServerListScreen extends ConsumerStatefulWidget {
 }
 
 class _ServerListScreenState extends ConsumerState<ServerListScreen> {
-  // Filters
-  String _sortBy = 'Best Match'; // Best Match, Speed, Ping, Country
+  String _sortBy = 'Best Match';
   String _searchQuery = '';
 
   @override
   Widget build(BuildContext context) {
     final serverListAsync = ref.watch(serverListProvider);
+    final vpnState = ref.watch(vpnControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Servers'),
+        title: const Text('VPN Servers'),
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ref.invalidate(serverListProvider);
-            },
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: () => ref.invalidate(serverListProvider),
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search Country or Operator...',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Theme.of(context).cardColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+      ),
+      body: Column(
+        children: [
+          // Header with search
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).appBarTheme.backgroundColor,
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(24),
+                bottomRight: Radius.circular(24),
               ),
-              onChanged: (val) {
-                setState(() {
-                  _searchQuery = val;
-                });
-              },
             ),
+            child: Column(
+              children: [
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search Country...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    filled: true,
+                    fillColor: Theme.of(context).cardColor.withAlpha(150),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (val) => setState(() => _searchQuery = val),
+                ),
+                const SizedBox(height: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildFilterChip('Best Match'),
+                      const SizedBox(width: 8),
+                      _buildFilterChip('Speed'),
+                      const SizedBox(width: 8),
+                      _buildFilterChip('Ping'),
+                      const SizedBox(width: 8),
+                      _buildFilterChip('Sessions'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Active Connection Status
+          if (vpnState.stage == 'connected' && vpnState.currentServer != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: _buildConnectedStatus(vpnState),
+            ),
+
+          Expanded(
+            child: serverListAsync.when(
+              data: (servers) {
+                var filtered =
+                    servers.where((s) {
+                      final q = _searchQuery.toLowerCase();
+                      return s.countryLong.toLowerCase().contains(q) ||
+                          s.operator.toLowerCase().contains(q);
+                    }).toList();
+
+                if (_sortBy == 'Speed') {
+                  filtered.sort((a, b) => b.speed.compareTo(a.speed));
+                } else if (_sortBy == 'Ping') {
+                  filtered.sort((a, b) => a.ping.compareTo(b.ping));
+                } else if (_sortBy == 'Sessions') {
+                  filtered.sort(
+                    (a, b) => a.numVpnSessions.compareTo(b.numVpnSessions),
+                  );
+                } else {
+                  filtered.sort(
+                    (a, b) => b.qualityScore.compareTo(a.qualityScore),
+                  );
+                }
+
+                if (filtered.isEmpty) {
+                  return const Center(child: Text("No servers found"));
+                }
+
+                return ListView.builder(
+                  itemCount: filtered.length,
+                  padding: const EdgeInsets.only(top: 8, bottom: 24),
+                  itemBuilder:
+                      (context, index) => _buildServerCard(filtered[index]),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(child: Text('Error: $err')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label) {
+    final isSelected = _sortBy == label;
+    return GestureDetector(
+      onTap: () => setState(() => _sortBy = label),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.redAccent : Colors.grey.withAlpha(30),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey.shade600,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
-      body: serverListAsync.when(
-        data: (servers) {
-          // Filter and Sort
-          var filtered =
-              servers.where((s) {
-                final q = _searchQuery.toLowerCase();
-                return s.countryLong.toLowerCase().contains(q) ||
-                    s.operator.toLowerCase().contains(q) ||
-                    s.message.toLowerCase().contains(q);
-              }).toList();
+    );
+  }
 
-          // Sort
-          if (_sortBy == 'Speed') {
-            filtered.sort((a, b) => b.speed.compareTo(a.speed));
-          } else if (_sortBy == 'Ping') {
-            filtered.sort((a, b) => a.ping.compareTo(b.ping));
-          } else if (_sortBy == 'Sessions') {
-            filtered.sort(
-              (a, b) => a.numVpnSessions.compareTo(b.numVpnSessions),
-            );
-          } else {
-            // Best Match (Quality Score)
-            filtered.sort((a, b) => b.qualityScore.compareTo(a.qualityScore));
-          }
-
-          if (filtered.isEmpty) {
-            return const Center(child: Text("No servers found"));
-          }
-
-          return ListView.builder(
-            itemCount: filtered.length,
-            padding: const EdgeInsets.all(8),
-            itemBuilder: (context, index) {
-              final server = filtered[index];
-              return _buildServerCard(server);
-            },
-          );
-        },
-        error:
-            (err, stack) => Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "Failed to load servers.\n$err",
-                    textAlign: TextAlign.center,
-                  ),
-                  TextButton(
-                    onPressed: () => ref.invalidate(serverListProvider),
-                    child: const Text("Retry"),
-                  ),
-                ],
+  Widget _buildConnectedStatus(VpnState vpnState) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: vpnState.statusColor.withAlpha(40),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: vpnState.statusColor.withAlpha(100)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              width: 32,
+              height: 22,
+              child: CountryFlag.fromCountryCode(
+                vpnState.currentServer!.countryShort,
               ),
             ),
-        loading: () => const Center(child: CircularProgressIndicator()),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "CURRENTLY CONNECTED",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+                Text(
+                  vpnState.currentServer!.countryLong,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: vpnState.statusColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text(
+              "ACTIVE",
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          _showSortOptions();
-        },
-        icon: const Icon(Icons.sort),
-        label: const Text("Sort"),
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
-      ),
-    );
-  }
-
-  void _showSortOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _sortOption('Best Match'),
-            _sortOption('Speed'),
-            _sortOption('Ping'),
-            _sortOption('Sessions'),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _sortOption(String title) {
-    return ListTile(
-      title: Text(title),
-      trailing:
-          _sortBy == title
-              ? const Icon(Icons.check, color: Colors.green)
-              : null,
-      onTap: () {
-        setState(() {
-          _sortBy = title;
-        });
-        Navigator.pop(context);
-      },
     );
   }
 
   Widget _buildServerCard(VpnServer server) {
-    // Estimations
     final speedMbps = (server.speed / 1000000).toStringAsFixed(1);
-    final isCrowded = server.numVpnSessions > 100; // Arbitrary threshold
+    final isCrowded = server.numVpnSessions > 100;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       elevation: 0,
-      color: Theme.of(context).cardColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
         onTap: () => _connectToServer(server),
@@ -187,8 +234,6 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
         title: Text(
           server.countryLong,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,9 +241,9 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
             const SizedBox(height: 4),
             Text(
               "${server.ip} • $speedMbps Mbps",
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Icon(
@@ -207,14 +252,8 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                   color: server.ping < 50 ? Colors.green : Colors.orange,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  "${server.ping} ms",
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 16),
+                Text("${server.ping} ms", style: const TextStyle(fontSize: 12)),
+                const SizedBox(width: 12),
                 Icon(
                   Icons.people_alt_rounded,
                   size: 14,
@@ -229,11 +268,7 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
             ),
           ],
         ),
-        trailing: Icon(
-          Icons.arrow_forward_ios_rounded,
-          size: 14,
-          color: Colors.grey.withAlpha(100),
-        ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
       ),
     );
   }
