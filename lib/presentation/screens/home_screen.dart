@@ -174,12 +174,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 child: Column(
                   children: [
                     Text(
-                      _getDisplayStatus(vpnState.stage),
+                      vpnState.displayStage,
                       style: Theme.of(
                         context,
                       ).textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: _getStatusColor(vpnState.stage),
+                        color: vpnState.statusColor,
                       ),
                     ),
                     if (vpnState.stage == 'connected')
@@ -198,29 +198,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               const Spacer(),
 
               // Big Connect Button
-              ZoomIn(
-                child: ConnectButton(
-                  state: vpnState.stage,
-                  onTap: () {
-                    if (vpnState.stage == 'connected' ||
-                        vpnState.stage == 'connecting') {
-                      ref.read(vpnControllerProvider.notifier).disconnect();
-                    } else {
-                      if (serverListAsync.asData?.value != null &&
-                          serverListAsync.asData!.value.isNotEmpty) {
-                        ref
-                            .read(vpnControllerProvider.notifier)
-                            .fastConnect(serverListAsync.asData!.value);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Fetching servers... Try again."),
-                          ),
-                        );
-                        final _ = ref.refresh(serverListProvider);
+              Center(
+                child: ZoomIn(
+                  child: ConnectButton(
+                    state: vpnState.stage,
+                    onTap: () {
+                      if (serverListAsync.asData != null) {
+                        if (vpnState.stage == 'connected' ||
+                            vpnState.isConnecting) {
+                          ref.read(vpnControllerProvider.notifier).disconnect();
+                        } else if (vpnState.stage == 'disconnected' &&
+                            serverListAsync.asData!.value.isNotEmpty) {
+                          ref
+                              .read(vpnControllerProvider.notifier)
+                              .fastConnect(serverListAsync.asData!.value);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Fetching servers... Try again."),
+                            ),
+                          );
+                          final _ = ref.refresh(serverListProvider);
+                        }
                       }
-                    }
-                  },
+                    },
+                  ),
                 ),
               ),
 
@@ -239,13 +241,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         StatusCard(
                           title: "DOWNLOAD",
                           value: vpnState.byteInTotal,
-                          icon: Icons.arrow_downward_rounded,
-                          color: _getStatusColor('connected'),
+                          icon: Icons.expand_more_rounded,
+                          color: Colors.greenAccent,
                         ),
                         StatusCard(
                           title: "UPLOAD",
                           value: vpnState.byteOutTotal,
-                          icon: Icons.arrow_upward_rounded,
+                          icon: Icons.expand_less_rounded,
                           color: Colors.orangeAccent,
                         ),
                         StatusCard(
@@ -272,41 +274,5 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     String minutes = twoDigits(d.inMinutes.remainder(60));
     String seconds = twoDigits(d.inSeconds.remainder(60));
     return "$hours:$minutes:$seconds";
-  }
-
-  String _getDisplayStatus(String stage) {
-    switch (stage) {
-      case 'connected':
-        return "Connected";
-      case 'disconnected':
-        return "Disconnected";
-      case 'connecting':
-      case 'wait_connection':
-      case 'tcp_connect':
-      case 'authenticating':
-      case 'get_config':
-        return "Connecting";
-      case 'error':
-        return "Failed";
-      default:
-        return "Disconnected";
-    }
-  }
-
-  Color _getStatusColor(String stage) {
-    switch (stage) {
-      case 'connected':
-        return const Color(0xFF7ED9A7); // Soft Pastel Red
-      case 'connecting':
-      case 'wait_connection':
-      case 'tcp_connect':
-      case 'authenticating':
-      case 'get_config':
-        return const Color(0xFF8ECDF4);
-      case 'error':
-        return const Color(0xFFF28B82);
-      default:
-        return const Color(0xFFE6E8EB);
-    }
   }
 }
