@@ -1,3 +1,4 @@
+import 'package:bagani_vpn/domain/repositories/vpn_engine.dart';
 import 'package:bagani_vpn/presentation/providers/vpn_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,15 +9,16 @@ class LogsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Realtime logs accumulated from the VPN engine stream.
     final logHistory = ref.watch(logHistoryProvider);
+    final vpnState = ref.watch(vpnControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Connection Logs'),
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.copy),
+            icon: const Icon(Icons.copy_rounded),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: logHistory.join('\n')));
               ScaffoldMessenger.of(
@@ -25,7 +27,7 @@ class LogsScreen extends ConsumerWidget {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.delete),
+            icon: const Icon(Icons.delete_outline_rounded),
             onPressed: () {
               ref.read(logHistoryProvider.notifier).clear();
             },
@@ -33,21 +35,102 @@ class LogsScreen extends ConsumerWidget {
         ],
       ),
       body: Container(
-        color: Colors.black,
-        padding: const EdgeInsets.all(8),
-        child: ListView.builder(
-          itemCount: logHistory.length,
-          itemBuilder: (context, index) {
-            return Text(
-              logHistory[index],
-              style: const TextStyle(
-                color: Colors.greenAccent,
-                fontFamily: 'Courier',
-                fontSize: 12,
-              ),
-            );
-          },
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors:
+                Theme.of(context).brightness == Brightness.dark
+                    ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
+                    : [const Color(0xFFFDFDFD), const Color(0xFFF5F5F5)],
+          ),
         ),
+        child:
+            logHistory.isEmpty
+                ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.article_outlined,
+                        size: 64,
+                        color: Colors.grey.withAlpha(100),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "No logs recorded yet.",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                )
+                : ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  itemCount: logHistory.length,
+                  itemBuilder: (context, index) {
+                    final log = logHistory[index];
+                    final isStatus = log.contains('Status ->');
+
+                    return Card(
+                      elevation: 0,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color:
+                          isStatus
+                              ? vpnState.statusColor.withAlpha(30)
+                              : Theme.of(context).cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color:
+                              isStatus
+                                  ? vpnState.statusColor.withAlpha(100)
+                                  : Colors.grey.withAlpha(30),
+                          width: 1,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              log.split(': ')[0], // Time
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade500,
+                                fontFamily: 'Courier',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                log.substring(log.indexOf(': ') + 2), // Message
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color:
+                                      isStatus
+                                          ? Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? Colors.white
+                                              : Colors.black87
+                                          : Colors.grey.shade700,
+                                  fontWeight:
+                                      isStatus
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
       ),
     );
   }
@@ -61,24 +144,22 @@ final logHistoryProvider =
     });
 
 class LogHistoryNotifier extends StateNotifier<List<String>> {
-  final dynamic _engine; // VpnEngine
+  final VpnEngine _engine;
 
   LogHistoryNotifier(this._engine) : super([]) {
     _engine.statusStream.listen((log) {
       if (log != null) {
-        // Skip technical statistics (JSON strings)
         if (log.contains('byte_in:')) return;
 
         String line = log;
-        // Strip "Engine: " prefix if present for a cleaner look
         if (line.startsWith('Engine: ')) {
           line = line.replaceFirst('Engine: ', '');
         }
 
-        // Skip internal/empty messages
         if (line.isEmpty || line.contains('noprocess')) return;
 
         state = [...state, "${_time()}: $line"];
+        if (state.length > 200) state = state.sublist(state.length - 200);
       }
     });
 

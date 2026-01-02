@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:bagani_vpn/core/services/background_fetch_service.dart';
 
 @pragma('vm:entry-point')
@@ -24,6 +25,9 @@ void main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(VpnServerAdapter());
   await Hive.openBox(AppConstants.hiveBoxName);
+
+  // Init AdMob
+  await MobileAds.instance.initialize();
 
   // Init Workmanager
   Workmanager().initialize(callbackDispatcher, isInDebugMode: true);

@@ -41,6 +41,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        
+        <!-- AdMob App ID - Test ID -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-6268832217143150~9763008559"/>
         <service
             android:name="id.laskarmedia.openvpn_flutter.OpenVPNService"
             android:exported="true"
