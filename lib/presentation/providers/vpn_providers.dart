@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:bagani_vpn/presentation/providers/reward_providers.dart';
 import 'package:flutter/material.dart';
 
 import 'package:bagani_vpn/data/datasources/vpn_engine_impl.dart';
@@ -135,9 +136,11 @@ class VpnState {
 
 class VpnController extends StateNotifier<VpnState> {
   final VpnEngine _engine;
+  final RewardController _rewardController;
   Timer? _timer;
 
-  VpnController(this._engine) : super(VpnState(stage: 'disconnected')) {
+  VpnController(this._engine, this._rewardController)
+    : super(VpnState(stage: 'disconnected')) {
     _loadState().then((_) => _init());
   }
 
@@ -251,6 +254,14 @@ class VpnController extends StateNotifier<VpnState> {
       state = state.copyWith(
         duration: DateTime.now().difference(state.connectedSince!),
       );
+
+      // Drain rewarded time
+      _rewardController.useOneSecond();
+
+      // Check if time is out
+      if (_rewardController.state.remainingSeconds <= 0) {
+        disconnect();
+      }
     });
   }
 
@@ -277,6 +288,11 @@ class VpnController extends StateNotifier<VpnState> {
   }
 
   Future<void> connect(VpnServer server) async {
+    // Reward check
+    if (_rewardController.state.remainingSeconds <= 0) {
+      return;
+    }
+
     // If same server and already connected, do nothing.
     if (state.stage == 'connected' && state.currentServer?.ip == server.ip) {
       return;
@@ -322,6 +338,10 @@ class VpnController extends StateNotifier<VpnState> {
   }
 
   Future<void> fastConnect(List<VpnServer> servers) async {
+    if (_rewardController.state.remainingSeconds <= 0) {
+      return;
+    }
+
     if (state.isConnecting || state.stage == 'connected') {
       return;
     }
@@ -525,5 +545,6 @@ final vpnControllerProvider = StateNotifierProvider<VpnController, VpnState>((
   ref,
 ) {
   final engine = ref.watch(vpnEngineProvider);
-  return VpnController(engine);
+  final reward = ref.watch(rewardProvider.notifier);
+  return VpnController(engine, reward);
 });
