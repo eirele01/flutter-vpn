@@ -141,13 +141,31 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.redAccent : Colors.grey.withAlpha(30),
+          color:
+              isSelected
+                  ? Theme.of(context).primaryColor
+                  : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Theme.of(context).primaryColor.withAlpha(80),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                  : null,
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey.shade600,
+            color:
+                isSelected
+                    ? Colors.white
+                    : Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.color?.withAlpha(150),
             fontSize: 12,
             fontWeight: FontWeight.bold,
           ),
@@ -157,12 +175,13 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
   }
 
   Widget _buildConnectedStatus(VpnState vpnState) {
+    final color = vpnState.statusColor(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: vpnState.statusColor.withAlpha(40),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: vpnState.statusColor.withAlpha(100)),
+        color: color.withAlpha(40),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withAlpha(100)),
       ),
       child: Row(
         children: [
@@ -182,7 +201,7 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  "CURRENTLY CONNECTED",
+                  "IDENTITY PROTECTED",
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
@@ -199,11 +218,11 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: vpnState.statusColor,
+              color: vpnState.statusColor(context),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Text(
-              "ACTIVE",
+              "SECURED",
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
@@ -221,9 +240,10 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
     final isCrowded = server.numVpnSessions > 100;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 4,
+      shadowColor: Colors.black.withAlpha(10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: ListTile(
         onTap: () => _connectToServer(server),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

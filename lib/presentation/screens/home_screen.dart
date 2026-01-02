@@ -119,10 +119,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text(
-          'BaganiVPN',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
-        ),
+        title: const Text('BaganiVPN'),
         actions: [
           if (vpnState.stage != 'disconnected')
             IconButton(
@@ -145,16 +142,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ),
       body: Container(
         width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors:
-                Theme.of(context).brightness == Brightness.dark
-                    ? [const Color(0xFF2D1B1B), const Color(0xFF1A1212)]
-                    : [const Color(0xFFFFF5F5), const Color(0xFFFFEBEE)],
-          ),
-        ),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: SafeArea(
           child: Column(
             children: [
@@ -176,17 +164,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 20,
-                            vertical: 12,
+                            vertical: 16,
                           ),
                           margin: const EdgeInsets.symmetric(horizontal: 24),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).cardColor,
-                            borderRadius: BorderRadius.circular(20),
+                            color: Theme.of(context).cardTheme.color,
+                            borderRadius: BorderRadius.circular(24),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.red.withAlpha(20),
-                                blurRadius: 15,
-                                offset: const Offset(0, 5),
+                                color: Colors.black.withAlpha(
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? 40
+                                      : 10,
+                                ),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
                               ),
                             ],
                           ),
@@ -204,9 +197,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   ),
                                 )
                               else
-                                const Icon(
+                                Icon(
                                   Icons.public_rounded,
-                                  color: Colors.grey,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 28,
                                 ),
                               const SizedBox(width: 16),
                               Expanded(
@@ -216,30 +210,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   children: [
                                     Text(
                                       vpnState.currentServer?.countryLong ??
-                                          "Select Best Location",
+                                          "Optimal Location",
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16,
+                                        letterSpacing: -0.2,
                                       ),
                                     ),
                                     Text(
                                       vpnState.currentServer?.ip ??
-                                          "Your real IP is hidden",
+                                          "Identity Secured",
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: Theme.of(context)
                                             .textTheme
                                             .bodySmall
                                             ?.color
-                                            ?.withAlpha(180),
+                                            ?.withAlpha(150),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const Icon(
-                                Icons.swap_vert_rounded,
-                                color: Colors.redAccent,
+                              Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                             ],
                           ),
@@ -272,8 +267,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           style: Theme.of(
                             context,
                           ).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: vpnState.statusColor,
+                            fontWeight: FontWeight.w900,
+                            color: vpnState.statusColor(context),
+                            letterSpacing: -1.0,
                           ),
                         ),
                         // Always reserve space for the timer to prevent jumping

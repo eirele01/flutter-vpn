@@ -43,16 +43,18 @@ class _RewardCardState extends ConsumerState<RewardCard> {
     final pulseCount = ref.watch(pulseRewardProvider);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       margin: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(20),
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(5),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withAlpha(
+              Theme.of(context).brightness == Brightness.dark ? 40 : 10,
+            ),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -60,29 +62,33 @@ class _RewardCardState extends ConsumerState<RewardCard> {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.timer_outlined,
-                color: Colors.redAccent,
+              Icon(
+                Icons.hourglass_bottom_rounded,
+                color: Theme.of(context).colorScheme.primary,
                 size: 20,
               ),
               const SizedBox(width: 8),
               const Text(
-                "Remaining Time",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                "Protection Time",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  letterSpacing: -0.3,
+                ),
               ),
               const Spacer(),
               Text(
                 _formatSeconds(rewardState.remainingSeconds),
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Courier',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: Colors.redAccent,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
             ],
           ),
-          const Divider(height: 24),
+          const Divider(height: 32, thickness: 1, color: Colors.black12),
           Row(
             children: [
               Expanded(
@@ -90,18 +96,21 @@ class _RewardCardState extends ConsumerState<RewardCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Daily Limit: ${rewardState.adsWatchedToday}/6",
+                      "Session limit ${rewardState.adsWatchedToday}/6",
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade600,
+                        color: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.color?.withAlpha(150),
                       ),
                     ),
                     if (rewardState.isOnCooldown)
                       Text(
-                        "Cooldown: ${rewardState.cooldownMinutesRemaining}m remaining",
+                        "Resumes in ${rewardState.cooldownMinutesRemaining}m",
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Colors.orange,
+                          color: Colors.orangeAccent,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                   ],
@@ -112,22 +121,42 @@ class _RewardCardState extends ConsumerState<RewardCard> {
                 duration: const Duration(milliseconds: 500),
                 tween: Tween(begin: 0.0, end: 1.0),
                 builder: (context, value, child) {
-                  // value goes from 0.0 to 1.0
-                  // we want scale to go from 1.0 to 1.06 and back to 1.0
-                  // This formula creates a triangle wave for the scale: 1.0 -> 1.06 -> 1.0
                   final t =
                       pulseCount > 0 ? (1.0 - (2 * (value - 0.5)).abs()) : 0.0;
                   final scale = 1.0 + (0.06 * t);
                   return Transform.scale(scale: scale, child: child);
                 },
-                child: ElevatedButton.icon(
+                child: ElevatedButton(
                   onPressed:
                       (rewardState.canWatchAd &&
                               !widget.isAdLoading &&
                               !widget.isVpnConnected)
                           ? widget.onWatchAd
                           : null,
-                  icon:
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withAlpha(15)
+                            : Colors.grey.shade200,
+                    disabledForegroundColor:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withAlpha(40)
+                            : Colors.grey.shade400,
+                    elevation: 0,
+                    shadowColor: Theme.of(
+                      context,
+                    ).colorScheme.primary.withAlpha(100),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                  ),
+                  child:
                       widget.isAdLoading
                           ? const SizedBox(
                             width: 14,
@@ -137,34 +166,10 @@ class _RewardCardState extends ConsumerState<RewardCard> {
                               color: Colors.white,
                             ),
                           )
-                          : const Icon(Icons.play_circle_fill, size: 18),
-                  label: Text(
-                    widget.isVpnConnected
-                        ? "Disconnect first"
-                        : rewardState.adsWatchedToday >= 6
-                        ? "Daily Limit"
-                        : "Get 2 Hours",
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white.withAlpha(20)
-                            : Colors.grey.shade300,
-                    disabledForegroundColor:
-                        Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white.withAlpha(50)
-                            : Colors.grey.shade600,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                  ),
+                          : const Text(
+                            "Get Refill",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                 ),
               ),
             ],

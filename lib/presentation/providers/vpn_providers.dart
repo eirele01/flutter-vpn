@@ -119,18 +119,20 @@ class VpnState {
       stage == 'vpn_generate_config';
 
   String get displayStage {
-    if (stage == 'connected') return "Connected";
-    if (isConnecting) return "Connecting";
-    if (stage == 'error') return "Failed";
-    return "Disconnected";
+    if (stage == 'connected') return "Protected";
+    if (isConnecting) return "Securing...";
+    if (stage == 'error') return "Failed to Secure";
+    return "Not Protected";
   }
 
   // Soft Pastel Palette
-  Color get statusColor {
+  Color statusColor(BuildContext context) {
     if (stage == 'connected') return const Color(0xFF7ED9A7); // Pastel Green
     if (isConnecting) return const Color(0xFF8ECDF4); // Pastel Blue
-    if (stage == 'error') return const Color(0xFFF28B82); // Pastel Red
-    return const Color(0xFFE6E8EB); // Neutral
+    if (stage == 'error') return const Color(0xFFFF6B6B); // Primary Pastel Red
+    return Theme.of(context).brightness == Brightness.dark
+        ? Colors.white24
+        : Colors.grey.shade400;
   }
 }
 

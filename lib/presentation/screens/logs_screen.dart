@@ -35,16 +35,7 @@ class LogsScreen extends ConsumerWidget {
         ],
       ),
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors:
-                Theme.of(context).brightness == Brightness.dark
-                    ? [const Color(0xFF1E1E1E), const Color(0xFF121212)]
-                    : [const Color(0xFFFDFDFD), const Color(0xFFF5F5F5)],
-          ),
-        ),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child:
             logHistory.isEmpty
                 ? Center(
@@ -79,14 +70,14 @@ class LogsScreen extends ConsumerWidget {
                       margin: const EdgeInsets.only(bottom: 8),
                       color:
                           isStatus
-                              ? vpnState.statusColor.withAlpha(30)
+                              ? vpnState.statusColor(context).withAlpha(30)
                               : Theme.of(context).cardColor,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
                           color:
                               isStatus
-                                  ? vpnState.statusColor.withAlpha(100)
+                                  ? vpnState.statusColor(context).withAlpha(100)
                                   : Colors.grey.withAlpha(30),
                           width: 1,
                         ),
@@ -177,7 +168,7 @@ class LogHistoryNotifier extends StateNotifier<List<String>> {
   String _getFriendlyStage(String stage) {
     switch (stage) {
       case 'connected':
-        return "Secure Connection Established";
+        return "Identity Protected";
       case 'disconnected':
         return "Disconnected";
       case 'wait_connection':

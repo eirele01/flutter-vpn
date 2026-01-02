@@ -44,16 +44,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings'), elevation: 0),
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors:
-                Theme.of(context).brightness == Brightness.dark
-                    ? [const Color(0xFF2D1B1B), const Color(0xFF1A1212)]
-                    : [const Color(0xFFFFF5F5), const Color(0xFFFFEBEE)],
-          ),
-        ),
+        width: double.infinity,
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Column(
           children: [
             Expanded(
@@ -62,9 +54,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _buildSection(context, "Appearance", [
                     ListTile(
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.brightness_6_rounded,
-                        color: Colors.redAccent,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                       title: const Text("Theme"),
                       subtitle: const Text("System Default"),
@@ -145,10 +137,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Text(
             title.toUpperCase(),
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.redAccent.withAlpha(200),
-              letterSpacing: 1.1,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              color: Theme.of(context).colorScheme.primary.withAlpha(180),
+              letterSpacing: 1.2,
             ),
           ),
         ),
@@ -156,9 +148,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           elevation: 0,
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(24),
           ),
-          color: Theme.of(context).cardColor.withAlpha(200),
+          color: Theme.of(context).cardTheme.color,
           child: Column(children: children),
         ),
       ],
