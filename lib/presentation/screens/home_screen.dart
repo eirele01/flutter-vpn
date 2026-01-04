@@ -41,6 +41,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       listener: BannerAdListener(
         onAdLoaded: (_) => setState(() {}),
         onAdFailedToLoad: (ad, error) {
+          debugPrint('BannerAd failed to load: $error');
           ad.dispose();
           _bannerAd = null;
         },
@@ -62,10 +63,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           _showRewardedAd();
         },
         onAdFailedToLoad: (error) {
+          debugPrint('RewardedAd failed to load: $error');
           _isRewardedAdLoading = false;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("Ad failed to load. Try again later."),
+              content: Text("Ad failed to load. Check console for details."),
             ),
           );
         },
@@ -210,7 +212,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   children: [
                                     Text(
                                       vpnState.currentServer?.countryLong ??
-                                          "Optimal Location",
+                                          "Select Best Location",
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16,
@@ -219,7 +221,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                     ),
                                     Text(
                                       vpnState.currentServer?.ip ??
-                                          "Identity Secured",
+                                          "Your real IP is Secured",
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: Theme.of(context)

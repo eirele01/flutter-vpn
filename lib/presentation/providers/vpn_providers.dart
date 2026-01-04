@@ -32,9 +32,21 @@ final vpnEngineProvider = Provider<VpnEngine>((ref) {
 // Logic Providers
 
 // 1. Server List State
+final serverForceRefreshProvider = StateProvider((ref) => false);
+
 final serverListProvider = FutureProvider<List<VpnServer>>((ref) async {
   final repo = ref.watch(serverRepositoryProvider);
-  return repo.getServers();
+  final forceRefresh = ref.watch(serverForceRefreshProvider);
+  final servers = await repo.getServers(forceRefresh: forceRefresh);
+
+  // Reset force refresh after use
+  if (forceRefresh) {
+    Future.microtask(
+      () => ref.read(serverForceRefreshProvider.notifier).state = false,
+    );
+  }
+
+  return servers;
 });
 
 // 2. Refresh Controller

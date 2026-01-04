@@ -27,7 +27,10 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.invalidate(serverListProvider),
+            onPressed: () {
+              ref.read(serverForceRefreshProvider.notifier).state = true;
+              ref.invalidate(serverListProvider);
+            },
           ),
         ],
       ),
