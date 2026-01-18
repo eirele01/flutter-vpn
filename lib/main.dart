@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'package:bagani_vpn/core/utils/ad_helper.dart';
+import 'package:bagani_vpn/core/utils/app_open_ad_manager.dart';
 import 'package:bagani_vpn/core/services/background_fetch_service.dart';
 
 @pragma('vm:entry-point')
@@ -25,6 +27,9 @@ void main() async {
   Hive.registerAdapter(VpnServerAdapter());
   await Hive.openBox(AppConstants.hiveBoxName);
 
+  // Init AdMob with UMP Consent
+  await AdHelper.initialize();
+
   // Init Workmanager
   Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
   Workmanager().registerPeriodicTask(
@@ -37,8 +42,36 @@ void main() async {
   runApp(const ProviderScope(child: BaganiVpnApp()));
 }
 
-class BaganiVpnApp extends StatelessWidget {
+class BaganiVpnApp extends StatefulWidget {
   const BaganiVpnApp({super.key});
+
+  @override
+  State<BaganiVpnApp> createState() => _BaganiVpnAppState();
+}
+
+class _BaganiVpnAppState extends State<BaganiVpnApp>
+    with WidgetsBindingObserver {
+  late AppOpenAdManager _appOpenAdManager;
+
+  @override
+  void initState() {
+    super.initState();
+    _appOpenAdManager = AppOpenAdManager()..loadAd();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _appOpenAdManager.showAdIfAvailable();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

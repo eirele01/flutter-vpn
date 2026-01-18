@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:bagani_vpn/presentation/providers/reward_providers.dart';
+import 'package:flutter/material.dart';
 
 import 'package:bagani_vpn/data/datasources/vpn_engine_impl.dart';
 import 'package:bagani_vpn/data/datasources/vpn_gate_api_client.dart';
@@ -30,9 +32,21 @@ final vpnEngineProvider = Provider<VpnEngine>((ref) {
 // Logic Providers
 
 // 1. Server List State
+final serverForceRefreshProvider = StateProvider((ref) => false);
+
 final serverListProvider = FutureProvider<List<VpnServer>>((ref) async {
   final repo = ref.watch(serverRepositoryProvider);
-  return repo.getServers();
+  final forceRefresh = ref.watch(serverForceRefreshProvider);
+  final servers = await repo.getServers(forceRefresh: forceRefresh);
+
+  // Reset force refresh after use
+  if (forceRefresh) {
+    Future.microtask(
+      () => ref.read(serverForceRefreshProvider.notifier).state = false,
+    );
+  }
+
+  return servers;
 });
 
 // 2. Refresh Controller
@@ -105,13 +119,42 @@ class VpnState {
       duration: duration ?? this.duration,
     );
   }
+
+  // --- UI Helpers ---
+
+  bool get isConnecting =>
+      stage == 'connecting' ||
+      stage == 'wait_connection' ||
+      stage == 'tcp_connect' ||
+      stage == 'authenticating' ||
+      stage == 'get_config' ||
+      stage == 'vpn_generate_config';
+
+  String get displayStage {
+    if (stage == 'connected') return "Protected";
+    if (isConnecting) return "Securing...";
+    if (stage == 'error') return "Failed to Secure";
+    return "Not Protected";
+  }
+
+  // Soft Pastel Palette
+  Color statusColor(BuildContext context) {
+    if (stage == 'connected') return const Color(0xFF7ED9A7); // Pastel Green
+    if (isConnecting) return const Color(0xFF8ECDF4); // Pastel Blue
+    if (stage == 'error') return const Color(0xFFFF6B6B); // Primary Pastel Red
+    return Theme.of(context).brightness == Brightness.dark
+        ? Colors.white24
+        : Colors.grey.shade400;
+  }
 }
 
 class VpnController extends StateNotifier<VpnState> {
   final VpnEngine _engine;
+  final RewardController _rewardController;
   Timer? _timer;
 
-  VpnController(this._engine) : super(VpnState(stage: 'disconnected')) {
+  VpnController(this._engine, this._rewardController)
+    : super(VpnState(stage: 'disconnected')) {
     _loadState().then((_) => _init());
   }
 
@@ -127,16 +170,21 @@ class VpnController extends StateNotifier<VpnState> {
       connectedSince: since,
     );
 
-    if (stage == 'connected') {
+    // Only resume timer if we were connected AND the since date is reasonable (not null)
+    if (stage == 'connected' && since != null) {
       _startTimer();
     }
   }
 
   Future<void> _saveState() async {
-    final box = Hive.box(AppConstants.hiveBoxName);
-    await box.put('vpn_stage', state.stage);
-    await box.put('vpn_server', state.currentServer);
-    await box.put('vpn_since', state.connectedSince);
+    try {
+      final box = Hive.box(AppConstants.hiveBoxName);
+      await box.put('vpn_stage', state.stage);
+      await box.put('vpn_server', state.currentServer);
+      await box.put('vpn_since', state.connectedSince);
+    } catch (_) {
+      // Ignore hive errors during save
+    }
   }
 
   @override
@@ -168,7 +216,7 @@ class VpnController extends StateNotifier<VpnState> {
         _stopTimer();
         state = state.copyWith(
           stage: 'disconnected',
-          currentServer: null,
+          // Preserve currentServer so retry logic knows it failed
           connectedSince: null,
           duration: Duration.zero,
         );
@@ -210,12 +258,23 @@ class VpnController extends StateNotifier<VpnState> {
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (state.connectedSince != null) {
-        state = state.copyWith(
-          duration: DateTime.now().difference(state.connectedSince!),
-        );
-      } else {
+      // Defensive: Stop timer if we are no longer in connected stage
+      if (state.stage != 'connected' || state.connectedSince == null) {
         timer.cancel();
+        _timer = null;
+        return;
+      }
+
+      state = state.copyWith(
+        duration: DateTime.now().difference(state.connectedSince!),
+      );
+
+      // Drain rewarded time
+      _rewardController.useOneSecond();
+
+      // Check if time is out
+      if (_rewardController.state.remainingSeconds <= 0) {
+        disconnect();
       }
     });
   }
@@ -242,121 +301,109 @@ class VpnController extends StateNotifier<VpnState> {
     return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
   }
 
-  Future<void> connect(VpnServer server) async {
+  Future<void> connect(
+    VpnServer server, {
+    List<VpnServer>? alternatives,
+  }) async {
+    // Reward check
+    if (_rewardController.state.remainingSeconds <= 0) {
+      return;
+    }
+
     // If same server and already connected, do nothing.
     if (state.stage == 'connected' && state.currentServer?.ip == server.ip) {
       return;
     }
 
-    // If connected to a DIFFERENT server or currently connecting, disconnect first
-    if (state.stage == 'connected' || state.stage == 'connecting') {
-      try {
-        await _engine.disconnect();
-      } catch (_) {
-        // Plugin might throw if service isn't active yet
-      }
-      // Wait for the engine to signal disconnection or just a short safety delay
-      await Future.delayed(const Duration(milliseconds: 1000));
-    }
-
-    state = state.copyWith(
-      stage: 'connecting',
-      currentServer: server,
-      status: "Starting VPN engine...",
-      connectedSince: null, // Reset since we are connecting now
-      duration: Duration.zero,
-    );
-    _saveState();
-
-    // Make sure we wait for initialization if it's still running
-    await _engine.initialize();
-
-    state = state.copyWith(status: "Decoding config...");
-    String config = "";
-    try {
-      config = _sanitizeConfig(_decodeConfig(server.openVpnConfigData));
-    } catch (e) {
-      state = state.copyWith(stage: 'error', status: 'Failed to decode config');
-      return;
-    }
-
-    try {
-      await _engine.connect(
-        config,
-        "${server.countryLong} - ${server.hostName}",
+    // Prepare candidates: the chosen server first, then alternatives
+    final List<VpnServer> candidates = [server];
+    if (alternatives != null) {
+      // Add top 4 best alternatives that aren't the picked server
+      final otherBest = List<VpnServer>.from(alternatives)
+        ..sort((a, b) => b.qualityScore.compareTo(a.qualityScore));
+      candidates.addAll(
+        otherBest.where((s) => s.ip != server.ip).take(4).toList(),
       );
-    } catch (e) {
-      state = state.copyWith(stage: 'error', status: e.toString());
     }
+
+    for (int i = 0; i < candidates.length; i++) {
+      final current = candidates[i];
+
+      // Update state for this attempt
+      state = state.copyWith(
+        stage: 'connecting',
+        currentServer: current,
+        status:
+            i == 0
+                ? "Securing connection..."
+                : "Retrying with next best (${current.countryShort})...",
+        connectedSince: null,
+        duration: Duration.zero,
+      );
+      _saveState();
+
+      // Ensure engine is ready
+      await _engine.initialize();
+
+      String config;
+      try {
+        config = _sanitizeConfig(_decodeConfig(current.openVpnConfigData));
+      } catch (e) {
+        if (i == candidates.length - 1) {
+          state = state.copyWith(
+            stage: 'error',
+            status: 'Failed to decode config',
+          );
+        }
+        continue;
+      }
+
+      try {
+        await _engine.connect(config, current.countryLong);
+      } catch (e) {
+        if (i == candidates.length - 1) {
+          state = state.copyWith(stage: 'error', status: e.toString());
+        }
+        continue;
+      }
+
+      // Wait for success or failure
+      final success = await _waitForConnection(
+        timeout: const Duration(seconds: 40),
+      );
+
+      if (success) {
+        state = state.copyWith(status: "Shield Active!");
+        return;
+      } else {
+        // Failed attempt
+        if (i < candidates.length - 1) {
+          await _engine.disconnect();
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
+    }
+
+    // All candidates failed
+    state = state.copyWith(
+      stage: 'error',
+      status: 'Communication failed. Please try another region.',
+      currentServer: null,
+    );
   }
 
   Future<void> fastConnect(List<VpnServer> servers) async {
-    if (state.stage == 'connecting' || state.stage == 'connected') {
-      return;
-    }
     if (servers.isEmpty) {
       state = state.copyWith(stage: 'error', status: 'No servers available');
       return;
     }
 
-    state = state.copyWith(stage: 'connecting'); // Indicates generic connecting
-
-    // Sort servers by quality
-    final candidates = List<VpnServer>.from(servers)
+    // Sort to find the best candidate
+    final best = List<VpnServer>.from(servers)
       ..sort((a, b) => b.qualityScore.compareTo(a.qualityScore));
 
-    // Take top 5
-    final topCandidates = candidates.take(5).toList();
-
-    for (final server in topCandidates) {
-      if (state.stage == 'disconnected' && state.status == 'User Cancelled') {
-        break; // User cancelled
-      }
-
-      // Try connecting
-      state = state.copyWith(
-        stage: 'connecting',
-        currentServer: server,
-        status: "Trying ${server.countryShort}...",
-      );
-      _saveState();
-
-      String config;
-      try {
-        config = _sanitizeConfig(_decodeConfig(server.openVpnConfigData));
-      } catch (e) {
-        continue;
-      }
-
-      await _engine.connect(
-        config,
-        "${server.countryLong} - ${server.hostName}",
-      );
-
-      // Wait for result with timeout
-      final success = await _waitForConnection(
-        timeout: const Duration(seconds: 40),
-      );
-      if (success) {
-        state = state.copyWith(status: "Successfully connected!");
-        return; // Connected!
-      } else {
-        state = state.copyWith(
-          status: "${server.countryShort} timed out. Trying next...",
-        );
-        // Failed, disconnect and try next
-        await _engine.disconnect();
-        // Allow a small delay for cleanup
-        await Future.delayed(const Duration(seconds: 2));
-      }
-    }
-
-    // If we get here, all failed
-    state = state.copyWith(
-      stage: 'error',
-      status: 'Timed out. Please try a different country.',
-      currentServer: null,
-    );
+    // Delegate to connect with alternatives enabled
+    return connect(best.first, alternatives: servers);
   }
 
   String _sanitizeConfig(String config) {
@@ -447,11 +494,8 @@ class VpnController extends StateNotifier<VpnState> {
         if (state.stage == 'error') {
           return false;
         }
-        if (state.stage == 'disconnected' && state.currentServer != null) {
-          // It disconnected while we were trying? Likely failed.
-          // Note: connecting -> disconnected transition usually means failure or timeout
-          // But we set stage to connecting before calling this.
-          // If the engine updates it to disconnected, it failed.
+        if (state.stage == 'disconnected') {
+          // If we were connecting and stage became disconnected, it failed.
           return false;
         }
         await Future.delayed(const Duration(milliseconds: 500));
@@ -463,12 +507,23 @@ class VpnController extends StateNotifier<VpnState> {
   }
 
   Future<void> disconnect() async {
-    // If we are in the loop of fast connect, we might want to flag cancellation
-    if (state.stage == 'connecting') {
-      state = state.copyWith(status: 'User Cancelled');
-      // The loop checks this status
-    }
-    await _engine.disconnect();
+    // Stop timer immediately
+    _stopTimer();
+
+    // Clear state before engine call for instant UI response
+    state = state.copyWith(
+      stage: 'disconnected',
+      status: state.isConnecting ? 'User Cancelled' : 'Disconnected',
+      connectedSince: null,
+      duration: Duration.zero,
+    );
+
+    // Explicitly await save to ensure it's written before app might close
+    await _saveState();
+
+    try {
+      await _engine.disconnect();
+    } catch (_) {}
   }
 
   String _decodeConfig(String base64Str) {
@@ -480,5 +535,6 @@ final vpnControllerProvider = StateNotifierProvider<VpnController, VpnState>((
   ref,
 ) {
   final engine = ref.watch(vpnEngineProvider);
-  return VpnController(engine);
+  final reward = ref.watch(rewardProvider.notifier);
+  return VpnController(engine, reward);
 });
