@@ -1,15 +1,17 @@
+import 'package:bagani_vpn/presentation/providers/settings_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:bagani_vpn/core/utils/ad_helper.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   BannerAd? _bannerAd;
   int _bannerRetryCount = 0;
   final int _maxBannerRetries = 3;
@@ -57,6 +59,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings'), elevation: 0),
       body: Container(
@@ -71,13 +76,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSection(context, "Appearance", [
                     ListTile(
                       leading: Icon(
-                        Icons.brightness_6_rounded,
+                        _getThemeIcon(settings.themeMode),
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       title: const Text("Theme"),
-                      subtitle: const Text("System Default"),
+                      subtitle: Text(_getThemeName(settings.themeMode)),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () {},
+                      onTap: () => notifier.toggleTheme(),
                     ),
                   ]),
                   const SizedBox(height: 16),
@@ -89,8 +94,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       title: const Text("Auto-Refresh Servers"),
                       subtitle: const Text("Always keep the list up to date"),
-                      value: true,
-                      onChanged: (val) {},
+                      value: settings.isAutoRefreshEnabled,
+                      onChanged: (val) => notifier.toggleAutoRefresh(val),
                     ),
                     SwitchListTile(
                       secondary: const Icon(
@@ -99,8 +104,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       title: const Text("Kill Switch"),
                       subtitle: const Text("Block internet when VPN drops"),
-                      value: false,
-                      onChanged: (val) {},
+                      value: settings.isKillSwitchEnabled,
+                      onChanged: (val) => notifier.toggleKillSwitch(val),
                     ),
                   ]),
                   const SizedBox(height: 16),
@@ -138,6 +143,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  IconData _getThemeIcon(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return Icons.wb_sunny_rounded;
+      case ThemeMode.dark:
+        return Icons.dark_mode_rounded;
+      case ThemeMode.system:
+        return Icons.brightness_auto_rounded;
+    }
+  }
+
+  String _getThemeName(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return "Light";
+      case ThemeMode.dark:
+        return "Dark";
+      case ThemeMode.system:
+        return "System Default";
+    }
   }
 
   Widget _buildSection(

@@ -2,6 +2,7 @@ import 'package:bagani_vpn/core/constants/app_constants.dart';
 import 'package:bagani_vpn/core/theme/app_theme.dart';
 import 'package:bagani_vpn/domain/entities/vpn_server.dart';
 import 'package:bagani_vpn/presentation/screens/home_screen.dart';
+import 'package:bagani_vpn/presentation/providers/settings_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -42,14 +43,14 @@ void main() async {
   runApp(const ProviderScope(child: BaganiVpnApp()));
 }
 
-class BaganiVpnApp extends StatefulWidget {
+class BaganiVpnApp extends ConsumerStatefulWidget {
   const BaganiVpnApp({super.key});
 
   @override
-  State<BaganiVpnApp> createState() => _BaganiVpnAppState();
+  ConsumerState<BaganiVpnApp> createState() => _BaganiVpnAppState();
 }
 
-class _BaganiVpnAppState extends State<BaganiVpnApp>
+class _BaganiVpnAppState extends ConsumerState<BaganiVpnApp>
     with WidgetsBindingObserver {
   late AppOpenAdManager _appOpenAdManager;
 
@@ -75,12 +76,14 @@ class _BaganiVpnAppState extends State<BaganiVpnApp>
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+
     return MaterialApp(
       title: 'BaganiVPN',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: settings.themeMode,
       home: const HomeScreen(),
     );
   }
