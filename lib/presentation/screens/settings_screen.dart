@@ -11,6 +11,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   BannerAd? _bannerAd;
+  int _bannerRetryCount = 0;
+  final int _maxBannerRetries = 3;
 
   @override
   void initState() {
@@ -19,15 +21,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _loadBannerAd() {
+    if (_bannerAd != null) return;
+
     _bannerAd = BannerAd(
       adUnitId: AdHelper.bannerAdUnitId,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
-        onAdLoaded: (_) => setState(() {}),
+        onAdLoaded: (_) {
+          debugPrint('Settings BannerAd loaded successfully');
+          _bannerRetryCount = 0;
+          if (mounted) setState(() {});
+        },
         onAdFailedToLoad: (ad, error) {
+          debugPrint('Settings BannerAd failed to load: $error');
           ad.dispose();
           _bannerAd = null;
+
+          if (_bannerRetryCount < _maxBannerRetries) {
+            _bannerRetryCount++;
+            Future.delayed(Duration(seconds: _bannerRetryCount * 5), () {
+              if (mounted) _loadBannerAd();
+            });
+          }
         },
       ),
     )..load();

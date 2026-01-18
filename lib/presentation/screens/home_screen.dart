@@ -25,32 +25,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   BannerAd? _bannerAd;
   RewardedAd? _rewardedAd;
   bool _isRewardedAdLoading = false;
+  int _bannerRetryCount = 0;
+  final int _maxBannerRetries = 3;
+  int _rewardedAdRetryCount = 0;
+  final int _maxRewardedAdRetries = 3;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadBannerAd();
+    _preloadRewardedAd();
   }
 
   void _loadBannerAd() {
+    if (_bannerAd != null) return;
+
     _bannerAd = BannerAd(
       adUnitId: AdHelper.bannerAdUnitId,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
-        onAdLoaded: (_) => setState(() {}),
+        onAdLoaded: (_) {
+          debugPrint('BannerAd loaded successfully');
+          _bannerRetryCount = 0;
+          setState(() {});
+        },
         onAdFailedToLoad: (ad, error) {
           debugPrint('BannerAd failed to load: $error');
           ad.dispose();
           _bannerAd = null;
+
+          if (_bannerRetryCount < _maxBannerRetries) {
+            _bannerRetryCount++;
+            Future.delayed(Duration(seconds: _bannerRetryCount * 5), () {
+              if (mounted) _loadBannerAd();
+            });
+          }
         },
       ),
     )..load();
   }
 
-  void _loadRewardedAd() {
-    if (_isRewardedAdLoading) return;
+  void _preloadRewardedAd() {
+    if (_isRewardedAdLoading || _rewardedAd != null) return;
     setState(() => _isRewardedAdLoading = true);
 
     RewardedAd.load(
@@ -58,38 +76,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
+          debugPrint('RewardedAd preloaded');
           _rewardedAd = ad;
           _isRewardedAdLoading = false;
-          _showRewardedAd();
+          _rewardedAdRetryCount = 0; // Reset retries on success
+          if (mounted) setState(() {});
         },
         onAdFailedToLoad: (error) {
           debugPrint('RewardedAd failed to load: $error');
           _isRewardedAdLoading = false;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Ad failed to load. Check console for details."),
-            ),
-          );
+          _rewardedAd = null;
+          if (mounted) setState(() {});
+
+          if (_rewardedAdRetryCount < _maxRewardedAdRetries) {
+            _rewardedAdRetryCount++;
+            debugPrint(
+              'Retrying RewardedAd load in ${_rewardedAdRetryCount * 2} seconds...',
+            );
+            Future.delayed(Duration(seconds: _rewardedAdRetryCount * 2), () {
+              if (mounted) _preloadRewardedAd();
+            });
+          }
         },
       ),
     );
   }
 
   void _showRewardedAd() {
-    if (_rewardedAd == null) return;
+    if (_rewardedAd == null) {
+      if (!_isRewardedAdLoading) {
+        // User requested explicitly, so reset retries and force load
+        _rewardedAdRetryCount = 0;
+        _preloadRewardedAd();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Ad is loading... Please wait a moment.")),
+      );
+      return;
+    }
+
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
+        debugPrint('RewardedAd dismissed');
         ad.dispose();
         _rewardedAd = null;
+        _preloadRewardedAd();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        debugPrint('RewardedAd failed to show: $error');
         ad.dispose();
         _rewardedAd = null;
+        _preloadRewardedAd();
       },
     );
 
     _rewardedAd!.show(
       onUserEarnedReward: (ad, reward) {
+        debugPrint('User earned reward: ${reward.amount} ${reward.type}');
         ref.read(rewardProvider.notifier).addReward();
       },
     );
@@ -109,6 +152,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ref.read(vpnEngineProvider).initialize();
       // Reload banner if it was null
       if (_bannerAd == null) _loadBannerAd();
+      // Preload rewarded if missing
+      if (_rewardedAd == null) _preloadRewardedAd();
     }
   }
 
@@ -247,7 +292,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                     const SizedBox(height: 16),
                     RewardCard(
-                      onWatchAd: _loadRewardedAd,
+                      onWatchAd: _showRewardedAd,
                       isAdLoading: _isRewardedAdLoading,
                       isVpnConnected:
                           vpnState.stage == 'connected' ||

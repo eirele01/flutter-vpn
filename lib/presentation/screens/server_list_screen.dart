@@ -27,7 +27,7 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
               ? const Color(0xFF000000)
               : const Color(0xFFF2F2F7),
       appBar: AppBar(
-        title: const Text('VPN Settings'),
+        title: const Text('BaganiVPN'),
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
@@ -150,7 +150,7 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                                     (context, i) => _ServerRow(
                                       server: filtered[i],
                                       onTap: () {
-                                        _connectToServer(filtered[i]);
+                                        _connectToServer(filtered[i], servers);
                                       },
                                     ),
                               ),
@@ -199,8 +199,10 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
     return filtered;
   }
 
-  void _connectToServer(VpnServer server) {
-    ref.read(vpnControllerProvider.notifier).connect(server);
+  void _connectToServer(VpnServer server, List<VpnServer> alternatives) {
+    ref
+        .read(vpnControllerProvider.notifier)
+        .connect(server, alternatives: alternatives);
     Navigator.pop(context);
   }
 }
