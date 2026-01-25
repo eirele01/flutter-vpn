@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdHelper {
-  static bool useTestAds = false; // ALWAYS use test ads during development
+  static bool useTestAds = false; // Set to false for production
 
   // App ID for meta-data if needed (though usually handled in manifest/plist)
   static String get appId {
@@ -59,10 +59,49 @@ class AdHelper {
 
   /// Handles Consent (UMP) and then initializes Mobile Ads
   static Future<void> initialize() async {
-    // SIMPLIFIED FOR DEBUGGING: Directly init ads, bypassing consent flow.
-    // In production, you MUST restore the consent flow for GDPR/CPRA compliance.
-    debugPrint('AdHelper: Initializing MobileAds directly (Debug Mode)');
-    return _initializeMobileAds();
+    final params = ConsentRequestParameters();
+
+    // For testing PURPOSES in EEA/UK, you can use:
+    // final params = ConsentRequestParameters(
+    //   consentDebugSettings: ConsentDebugSettings(
+    //     debugGeography: DebugGeography.debugGeographyEea,
+    //     testDeviceIds: ['YOUR_DEVICE_ID'], // Add your device ID for testing consent
+    //   ),
+    // );
+
+    ConsentInformation.instance.requestConsentInfoUpdate(
+      params,
+      () async {
+        if (await ConsentInformation.instance.isConsentFormAvailable()) {
+          _loadConsentForm();
+        } else {
+          _initializeMobileAds();
+        }
+      },
+      (error) {
+        debugPrint('Consent error: ${error.message}');
+        // Even if consent fails, try to initialize ads (they might be non-personalized)
+        _initializeMobileAds();
+      },
+    );
+  }
+
+  static void _loadConsentForm() {
+    ConsentForm.loadConsentForm(
+      (consentForm) {
+        consentForm.show((formError) {
+          if (formError != null) {
+            debugPrint('Consent form error: ${formError.message}');
+          }
+          // Whether or not the form showed successfully, initialize Mobile Ads
+          _initializeMobileAds();
+        });
+      },
+      (loadError) {
+        debugPrint('Consent form load error: ${loadError.message}');
+        _initializeMobileAds();
+      },
+    );
   }
 
   static Future<void> _initializeMobileAds() async {
