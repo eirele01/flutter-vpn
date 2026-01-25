@@ -3,14 +3,13 @@ import 'package:bagani_vpn/core/theme/app_theme.dart';
 import 'package:bagani_vpn/domain/entities/vpn_server.dart';
 import 'package:bagani_vpn/presentation/screens/home_screen.dart';
 import 'package:bagani_vpn/presentation/providers/settings_provider.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'package:bagani_vpn/core/utils/ad_helper.dart';
-import 'package:bagani_vpn/core/utils/app_open_ad_manager.dart';
 import 'package:bagani_vpn/core/services/background_fetch_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -43,39 +42,11 @@ void main() async {
   runApp(const ProviderScope(child: BaganiVpnApp()));
 }
 
-class BaganiVpnApp extends ConsumerStatefulWidget {
+class BaganiVpnApp extends ConsumerWidget {
   const BaganiVpnApp({super.key});
 
   @override
-  ConsumerState<BaganiVpnApp> createState() => _BaganiVpnAppState();
-}
-
-class _BaganiVpnAppState extends ConsumerState<BaganiVpnApp>
-    with WidgetsBindingObserver {
-  late AppOpenAdManager _appOpenAdManager;
-
-  @override
-  void initState() {
-    super.initState();
-    _appOpenAdManager = AppOpenAdManager()..loadAd();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _appOpenAdManager.showAdIfAvailable();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
 
     return MaterialApp(

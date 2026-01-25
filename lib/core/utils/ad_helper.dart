@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdHelper {
@@ -43,69 +42,10 @@ class AdHelper {
     }
   }
 
-  static String get appOpenAdUnitId {
-    if (Platform.isAndroid) {
-      return useTestAds
-          ? 'ca-app-pub-3940256099942544/9257395921'
-          : 'ca-app-pub-6268832217143150/5377595568';
-    } else if (Platform.isIOS) {
-      return useTestAds
-          ? 'ca-app-pub-3940256099942544/5662855259'
-          : 'ca-app-pub-6268832217143150/4155167660';
-    } else {
-      throw UnsupportedError('Unsupported platform');
-    }
-  }
-
-  /// Handles Consent (UMP) and then initializes Mobile Ads
+  /// Handles Mobile Ads initialization
   static Future<void> initialize() async {
-    final params = ConsentRequestParameters();
-
-    // For testing PURPOSES in EEA/UK, you can use:
-    // final params = ConsentRequestParameters(
-    //   consentDebugSettings: ConsentDebugSettings(
-    //     debugGeography: DebugGeography.debugGeographyEea,
-    //     testDeviceIds: ['YOUR_DEVICE_ID'], // Add your device ID for testing consent
-    //   ),
-    // );
-
-    ConsentInformation.instance.requestConsentInfoUpdate(
-      params,
-      () async {
-        if (await ConsentInformation.instance.isConsentFormAvailable()) {
-          _loadConsentForm();
-        } else {
-          _initializeMobileAds();
-        }
-      },
-      (error) {
-        debugPrint('Consent error: ${error.message}');
-        // Even if consent fails, try to initialize ads (they might be non-personalized)
-        _initializeMobileAds();
-      },
-    );
-  }
-
-  static void _loadConsentForm() {
-    ConsentForm.loadConsentForm(
-      (consentForm) {
-        consentForm.show((formError) {
-          if (formError != null) {
-            debugPrint('Consent form error: ${formError.message}');
-          }
-          // Whether or not the form showed successfully, initialize Mobile Ads
-          _initializeMobileAds();
-        });
-      },
-      (loadError) {
-        debugPrint('Consent form load error: ${loadError.message}');
-        _initializeMobileAds();
-      },
-    );
-  }
-
-  static Future<void> _initializeMobileAds() async {
+    // We simplified this to direct initialization.
+    // Ensure you have "com.google.android.gms.ads.APPLICATION_ID" in AndroidManifest.xml
     await MobileAds.instance.initialize();
-    debugPrint('AdHelper: MobileAds initialized');
   }
 }
