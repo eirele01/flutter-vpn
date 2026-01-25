@@ -1,9 +1,11 @@
 import 'package:bagani_vpn/domain/entities/vpn_server.dart';
 import 'package:bagani_vpn/presentation/providers/vpn_providers.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:bagani_vpn/core/utils/ad_helper.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class ServerListScreen extends ConsumerStatefulWidget {
   const ServerListScreen({super.key});
@@ -15,6 +17,39 @@ class ServerListScreen extends ConsumerStatefulWidget {
 class _ServerListScreenState extends ConsumerState<ServerListScreen> {
   String _sortBy = 'All'; // All, Best Match, Speed, Ping
   String _searchQuery = '';
+  BannerAd? _bannerAd;
+  bool _isBannerLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBannerAd();
+  }
+
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: AdHelper.bannerAdUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          debugPrint('ServerList Banner loaded');
+          if (mounted) setState(() => _isBannerLoaded = true);
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('ServerList Banner failed: $error');
+          ad.dispose();
+          _bannerAd = null;
+        },
+      ),
+    )..load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +89,6 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                 children: [
                   const SizedBox(height: 8),
 
-                  // Large title (iOS-style)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
@@ -73,7 +107,6 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Search bar (iOS-ish)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: CupertinoSearchTextField(
@@ -89,7 +122,6 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Segmented control (replaces chips)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: SizedBox(
@@ -116,7 +148,6 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // List area
                   Expanded(
                     child: serverListAsync.when(
                       data: (servers) {
@@ -171,6 +202,17 @@ class _ServerListScreenState extends ConsumerState<ServerListScreen> {
           },
         ),
       ),
+      bottomNavigationBar:
+          _isBannerLoaded && _bannerAd != null
+              ? SafeArea(
+                child: Container(
+                  alignment: Alignment.center,
+                  width: _bannerAd!.size.width.toDouble(),
+                  height: _bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: _bannerAd!),
+                ),
+              )
+              : null,
     );
   }
 

@@ -28,6 +28,20 @@ class AdHelper {
     }
   }
 
+  static String get mrecAdUnitId {
+    if (Platform.isAndroid) {
+      return useTestAds
+          ? 'ca-app-pub-3940256099942544/6300978111'
+          : 'ca-app-pub-6268832217143150/2895418072';
+    } else if (Platform.isIOS) {
+      return useTestAds
+          ? 'ca-app-pub-3940256099942544/2934735716'
+          : 'ca-app-pub-6268832217143150/0000000000';
+    } else {
+      throw UnsupportedError('Unsupported platform');
+    }
+  }
+
   static String get rewardedAdUnitId {
     if (Platform.isAndroid) {
       return useTestAds

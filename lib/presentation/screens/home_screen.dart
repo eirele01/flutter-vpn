@@ -23,6 +23,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen>
     with WidgetsBindingObserver {
   BannerAd? _bannerAd;
+  BannerAd? _zeroTimeBannerAd;
+  bool _isZeroTimeAdLoaded = false;
   RewardedAd? _rewardedAd;
   bool _isRewardedAdLoading = false;
   int _bannerRetryCount = 0;
@@ -35,6 +37,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadBannerAd();
+    _loadZeroTimeAd();
     _preloadRewardedAd();
   }
 
@@ -62,6 +65,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               if (mounted) _loadBannerAd();
             });
           }
+        },
+      ),
+    )..load();
+  }
+
+  void _loadZeroTimeAd() {
+    if (_zeroTimeBannerAd != null) return;
+    _zeroTimeBannerAd = BannerAd(
+      adUnitId: AdHelper.mrecAdUnitId,
+      size: AdSize.mediumRectangle,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          debugPrint('ZeroTimeAd loaded');
+          if (mounted) setState(() => _isZeroTimeAdLoaded = true);
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('ZeroTimeAd failed: $error');
+          ad.dispose();
+          _zeroTimeBannerAd = null;
         },
       ),
     )..load();
@@ -141,6 +164,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   void dispose() {
     _bannerAd?.dispose();
+    _zeroTimeBannerAd?.dispose();
     _rewardedAd?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -152,6 +176,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ref.read(vpnEngineProvider).initialize();
       // Reload banner if it was null
       if (_bannerAd == null) _loadBannerAd();
+      if (_zeroTimeBannerAd == null) _loadZeroTimeAd();
       // Preload rewarded if missing
       if (_rewardedAd == null) _preloadRewardedAd();
     }
@@ -350,56 +375,90 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         Expanded(
                           child: Center(
                             child: ZoomIn(
-                              child: ConnectButton(
-                                state: vpnState.stage,
-                                onTap: () {
-                                  final rewardSeconds =
-                                      ref.read(rewardProvider).remainingSeconds;
+                              child:
+                                  (ref.watch(rewardProvider).remainingSeconds <=
+                                              0 &&
+                                          vpnState.stage == 'disconnected' &&
+                                          _isZeroTimeAdLoaded &&
+                                          _zeroTimeBannerAd != null)
+                                      ? SizedBox(
+                                        width:
+                                            _zeroTimeBannerAd!.size.width
+                                                .toDouble(),
+                                        height:
+                                            _zeroTimeBannerAd!.size.height
+                                                .toDouble(),
+                                        child: AdWidget(ad: _zeroTimeBannerAd!),
+                                      )
+                                      : ConnectButton(
+                                        state: vpnState.stage,
+                                        onTap: () {
+                                          final rewardSeconds =
+                                              ref
+                                                  .read(rewardProvider)
+                                                  .remainingSeconds;
 
-                                  if (rewardSeconds <= 0 &&
-                                      vpnState.stage == 'disconnected') {
-                                    ref
-                                        .read(pulseRewardProvider.notifier)
-                                        .state++;
-                                    return;
-                                  }
+                                          if (rewardSeconds <= 0 &&
+                                              vpnState.stage ==
+                                                  'disconnected') {
+                                            ref
+                                                .read(
+                                                  pulseRewardProvider.notifier,
+                                                )
+                                                .state++;
+                                            return;
+                                          }
 
-                                  if (serverListAsync.asData != null) {
-                                    if (vpnState.stage == 'connected' ||
-                                        vpnState.isConnecting) {
-                                      ref
-                                          .read(vpnControllerProvider.notifier)
-                                          .disconnect();
-                                    } else if (vpnState.stage ==
-                                            'disconnected' &&
-                                        serverListAsync
-                                            .asData!
-                                            .value
-                                            .isNotEmpty) {
-                                      ref
-                                          .read(vpnControllerProvider.notifier)
-                                          .fastConnect(
-                                            serverListAsync.asData!.value,
-                                          );
-                                    } else if (vpnState.stage == 'error') {
-                                      ref
-                                          .read(vpnControllerProvider.notifier)
-                                          .disconnect();
-                                    } else {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            "Fetching servers... Try again.",
-                                          ),
-                                        ),
-                                      );
-                                      final _ = ref.refresh(serverListProvider);
-                                    }
-                                  }
-                                },
-                              ),
+                                          if (serverListAsync.asData != null) {
+                                            if (vpnState.stage == 'connected' ||
+                                                vpnState.isConnecting) {
+                                              ref
+                                                  .read(
+                                                    vpnControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .disconnect();
+                                            } else if (vpnState.stage ==
+                                                    'disconnected' &&
+                                                serverListAsync
+                                                    .asData!
+                                                    .value
+                                                    .isNotEmpty) {
+                                              ref
+                                                  .read(
+                                                    vpnControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .fastConnect(
+                                                    serverListAsync
+                                                        .asData!
+                                                        .value,
+                                                  );
+                                            } else if (vpnState.stage ==
+                                                'error') {
+                                              ref
+                                                  .read(
+                                                    vpnControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .disconnect();
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    "Fetching servers... Try again.",
+                                                  ),
+                                                ),
+                                              );
+                                              final _ = ref.refresh(
+                                                serverListProvider,
+                                              );
+                                            }
+                                          }
+                                        },
+                                      ),
                             ),
                           ),
                         ),
