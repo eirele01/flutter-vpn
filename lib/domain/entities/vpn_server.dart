@@ -60,8 +60,9 @@ class VpnServer {
     if (speed == 0) return 0;
     double speedFactor = speed / 1000000; // Mbps approx
     double pingFactor = (ping <= 0 ? 999 : ping).toDouble();
-    double sessionsFactor = numVpnSessions > 50 ? 0.5 : 1.0; // Penalty for crowds
-    
+    double sessionsFactor =
+        numVpnSessions > 50 ? 0.5 : 1.0; // Penalty for crowds
+
     // Sort logic: High Speed / Ping
     return (speedFactor / pingFactor) * sessionsFactor;
   }

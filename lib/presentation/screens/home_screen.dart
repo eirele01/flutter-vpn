@@ -8,6 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:bagani_vpn/core/utils/ad_helper.dart';
+import 'package:bagani_vpn/presentation/providers/reward_providers.dart';
+import 'package:bagani_vpn/presentation/widgets/reward_card.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -18,14 +22,150 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen>
     with WidgetsBindingObserver {
+  BannerAd? _bannerAd;
+  BannerAd? _zeroTimeBannerAd;
+  bool _isZeroTimeAdLoaded = false;
+  RewardedAd? _rewardedAd;
+  bool _isRewardedAdLoading = false;
+  int _bannerRetryCount = 0;
+  final int _maxBannerRetries = 3;
+  int _rewardedAdRetryCount = 0;
+  final int _maxRewardedAdRetries = 3;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadBannerAd();
+    _loadZeroTimeAd();
+    _preloadRewardedAd();
+  }
+
+  void _loadBannerAd() {
+    if (_bannerAd != null) return;
+
+    _bannerAd = BannerAd(
+      adUnitId: AdHelper.bannerAdUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          debugPrint('BannerAd loaded successfully');
+          _bannerRetryCount = 0;
+          setState(() {});
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('BannerAd failed to load: $error');
+          ad.dispose();
+          _bannerAd = null;
+
+          if (_bannerRetryCount < _maxBannerRetries) {
+            _bannerRetryCount++;
+            Future.delayed(Duration(seconds: _bannerRetryCount * 5), () {
+              if (mounted) _loadBannerAd();
+            });
+          }
+        },
+      ),
+    )..load();
+  }
+
+  void _loadZeroTimeAd() {
+    if (_zeroTimeBannerAd != null) return;
+    _zeroTimeBannerAd = BannerAd(
+      adUnitId: AdHelper.mrecAdUnitId,
+      size: AdSize.mediumRectangle,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          debugPrint('ZeroTimeAd loaded');
+          if (mounted) setState(() => _isZeroTimeAdLoaded = true);
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('ZeroTimeAd failed: $error');
+          ad.dispose();
+          _zeroTimeBannerAd = null;
+        },
+      ),
+    )..load();
+  }
+
+  void _preloadRewardedAd() {
+    if (_isRewardedAdLoading || _rewardedAd != null) return;
+    setState(() => _isRewardedAdLoading = true);
+
+    RewardedAd.load(
+      adUnitId: AdHelper.rewardedAdUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          debugPrint('RewardedAd preloaded');
+          _rewardedAd = ad;
+          _isRewardedAdLoading = false;
+          _rewardedAdRetryCount = 0; // Reset retries on success
+          if (mounted) setState(() {});
+        },
+        onAdFailedToLoad: (error) {
+          debugPrint('RewardedAd failed to load: $error');
+          _isRewardedAdLoading = false;
+          _rewardedAd = null;
+          if (mounted) setState(() {});
+
+          if (_rewardedAdRetryCount < _maxRewardedAdRetries) {
+            _rewardedAdRetryCount++;
+            debugPrint(
+              'Retrying RewardedAd load in ${_rewardedAdRetryCount * 2} seconds...',
+            );
+            Future.delayed(Duration(seconds: _rewardedAdRetryCount * 2), () {
+              if (mounted) _preloadRewardedAd();
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  void _showRewardedAd() {
+    if (_rewardedAd == null) {
+      if (!_isRewardedAdLoading) {
+        // User requested explicitly, so reset retries and force load
+        _rewardedAdRetryCount = 0;
+        _preloadRewardedAd();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Ad is loading... Please wait a moment.")),
+      );
+      return;
+    }
+
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        debugPrint('RewardedAd dismissed');
+        ad.dispose();
+        _rewardedAd = null;
+        _preloadRewardedAd();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        debugPrint('RewardedAd failed to show: $error');
+        ad.dispose();
+        _rewardedAd = null;
+        _preloadRewardedAd();
+      },
+    );
+
+    _rewardedAd!.show(
+      onUserEarnedReward: (ad, reward) {
+        debugPrint('User earned reward: ${reward.amount} ${reward.type}');
+        ref.read(rewardProvider.notifier).addReward();
+      },
+    );
   }
 
   @override
   void dispose() {
+    _bannerAd?.dispose();
+    _zeroTimeBannerAd?.dispose();
+    _rewardedAd?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -33,9 +173,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // When coming back from background, re-init the engine
-      // to trigger stage/status streams to emit current status.
       ref.read(vpnEngineProvider).initialize();
+      // Reload banner if it was null
+      if (_bannerAd == null) _loadBannerAd();
+      if (_zeroTimeBannerAd == null) _loadZeroTimeAd();
+      // Preload rewarded if missing
+      if (_rewardedAd == null) _preloadRewardedAd();
     }
   }
 
@@ -48,10 +191,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text(
-          'BaganiVPN',
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
-        ),
+        title: const Text('BaganiVPN'),
         actions: [
           if (vpnState.stage != 'disconnected')
             IconButton(
@@ -74,191 +214,310 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ),
       body: Container(
         width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors:
-                Theme.of(context).brightness == Brightness.dark
-                    ? [const Color(0xFF2D1B1B), const Color(0xFF1A1212)]
-                    : [const Color(0xFFFFF5F5), const Color(0xFFFFEBEE)],
-          ),
-        ),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: SafeArea(
           child: Column(
             children: [
-              const SizedBox(height: 16),
-              // Server Selection & IP Area
-              FadeInDown(
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ServerListScreen(),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    margin: const EdgeInsets.symmetric(horizontal: 24),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withAlpha(20),
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        if (vpnState.currentServer != null)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: SizedBox(
-                              width: 32,
-                              height: 24,
-                              child: CountryFlag.fromCountryCode(
-                                vpnState.currentServer!.countryShort,
-                              ),
+              // 1. Server Info & Reward Card Area (Top)
+              // This section takes its natural space
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FadeInDown(
+                      duration: const Duration(milliseconds: 600),
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ServerListScreen(),
                             ),
-                          )
-                        else
-                          const Icon(Icons.public_rounded, color: Colors.grey),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 16,
+                          ),
+                          margin: const EdgeInsets.symmetric(horizontal: 24),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardTheme.color,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? 40
+                                      : 10,
+                                ),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                vpnState.currentServer?.countryLong ??
-                                    "Select Best Location",
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                              if (vpnState.currentServer != null)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: SizedBox(
+                                    width: 32,
+                                    height: 24,
+                                    child: CountryFlag.fromCountryCode(
+                                      vpnState.currentServer!.countryShort,
+                                    ),
+                                  ),
+                                )
+                              else
+                                Icon(
+                                  Icons.public_rounded,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 28,
+                                ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      vpnState.currentServer?.countryLong ??
+                                          "Select Best Location",
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                    Text(
+                                      vpnState.currentServer?.ip ??
+                                          "Your real IP is Secured",
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.color
+                                            ?.withAlpha(150),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              Text(
-                                vpnState.currentServer?.ip ??
-                                    "Your real IP is hidden",
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Theme.of(
-                                    context,
-                                  ).textTheme.bodySmall?.color?.withAlpha(180),
-                                ),
+                              Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                             ],
                           ),
                         ),
-                        const Icon(
-                          Icons.swap_vert_rounded,
-                          color: Colors.redAccent,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              const Spacer(),
-
-              // Status Text
-              FadeInDown(
-                child: Column(
-                  children: [
-                    Text(
-                      _getDisplayStatus(vpnState.stage),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: _getStatusColor(vpnState.stage),
                       ),
                     ),
-                    if (vpnState.stage == 'connected')
-                      Text(
-                        _formatDuration(vpnState.duration),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontFamily: 'Courier',
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                    const SizedBox(height: 16),
+                    RewardCard(
+                      onWatchAd: _showRewardedAd,
+                      isAdLoading: _isRewardedAdLoading,
+                      isVpnConnected:
+                          vpnState.stage == 'connected' ||
+                          vpnState.isConnecting,
+                    ),
                   ],
                 ),
               ),
 
-              const Spacer(),
-
-              // Big Connect Button
-              ZoomIn(
-                child: ConnectButton(
-                  state: vpnState.stage,
-                  onTap: () {
-                    if (vpnState.stage == 'connected' ||
-                        vpnState.stage == 'connecting') {
-                      ref.read(vpnControllerProvider.notifier).disconnect();
-                    } else {
-                      if (serverListAsync.asData?.value != null &&
-                          serverListAsync.asData!.value.isNotEmpty) {
-                        ref
-                            .read(vpnControllerProvider.notifier)
-                            .fastConnect(serverListAsync.asData!.value);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Fetching servers... Try again."),
+              // 2. Control & Hero Area (Status + Button + Bottom)
+              // Using a single Expanded + LayoutBuilder for precision centering
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Column(
+                      children: [
+                        // A. Status Area - Fixed Height (90px)
+                        SizedBox(
+                          height: 90,
+                          child: FadeIn(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  vpnState.displayStage,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: vpnState.statusColor(context),
+                                    letterSpacing: -1.0,
+                                  ),
+                                ),
+                                SizedBox(
+                                  height: 30,
+                                  child:
+                                      vpnState.stage == 'connected'
+                                          ? Text(
+                                            _formatDuration(vpnState.duration),
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontFamily: 'Courier',
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          )
+                                          : null,
+                                ),
+                              ],
+                            ),
                           ),
-                        );
-                        final _ = ref.refresh(serverListProvider);
-                      }
-                    }
+                        ),
+
+                        // B. Center Button - Takes all remaining Space
+                        Expanded(
+                          child: Center(
+                            child: ZoomIn(
+                              child:
+                                  (ref.watch(rewardProvider).remainingSeconds <=
+                                              0 &&
+                                          vpnState.stage == 'disconnected' &&
+                                          _isZeroTimeAdLoaded &&
+                                          _zeroTimeBannerAd != null)
+                                      ? SizedBox(
+                                        width:
+                                            _zeroTimeBannerAd!.size.width
+                                                .toDouble(),
+                                        height:
+                                            _zeroTimeBannerAd!.size.height
+                                                .toDouble(),
+                                        child: AdWidget(ad: _zeroTimeBannerAd!),
+                                      )
+                                      : ConnectButton(
+                                        state: vpnState.stage,
+                                        onTap: () {
+                                          final rewardSeconds =
+                                              ref
+                                                  .read(rewardProvider)
+                                                  .remainingSeconds;
+
+                                          if (rewardSeconds <= 0 &&
+                                              vpnState.stage ==
+                                                  'disconnected') {
+                                            ref
+                                                .read(
+                                                  pulseRewardProvider.notifier,
+                                                )
+                                                .state++;
+                                            return;
+                                          }
+
+                                          if (serverListAsync.asData != null) {
+                                            if (vpnState.stage == 'connected' ||
+                                                vpnState.isConnecting) {
+                                              ref
+                                                  .read(
+                                                    vpnControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .disconnect();
+                                            } else if (vpnState.stage ==
+                                                    'disconnected' &&
+                                                serverListAsync
+                                                    .asData!
+                                                    .value
+                                                    .isNotEmpty) {
+                                              ref
+                                                  .read(
+                                                    vpnControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .fastConnect(
+                                                    serverListAsync
+                                                        .asData!
+                                                        .value,
+                                                  );
+                                            } else if (vpnState.stage ==
+                                                'error') {
+                                              ref
+                                                  .read(
+                                                    vpnControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .disconnect();
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    "Fetching servers... Try again.",
+                                                  ),
+                                                ),
+                                              );
+                                              final _ = ref.refresh(
+                                                serverListProvider,
+                                              );
+                                            }
+                                          }
+                                        },
+                                      ),
+                            ),
+                          ),
+                        ),
+
+                        // C. Bottom Section Area - Fixed Height (150px)
+                        SizedBox(
+                          height: 150,
+                          child: Container(
+                            alignment: Alignment.topCenter,
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Stack(
+                              alignment: Alignment.topCenter,
+                              children: [
+                                if (vpnState.stage == 'connected')
+                                  FadeInUp(
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        StatusCard(
+                                          title: "DOWNLOAD",
+                                          value: vpnState.byteInTotal,
+                                          icon: Icons.expand_more_rounded,
+                                          color: Colors.greenAccent,
+                                        ),
+                                        StatusCard(
+                                          title: "UPLOAD",
+                                          value: vpnState.byteOutTotal,
+                                          icon: Icons.expand_less_rounded,
+                                          color: Colors.orangeAccent,
+                                        ),
+                                        StatusCard(
+                                          title: "PING",
+                                          value:
+                                              "${vpnState.currentServer?.ping ?? 0} ms",
+                                          icon: Icons.bolt_rounded,
+                                          color: Colors.blueAccent,
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                else if (_bannerAd != null)
+                                  FadeIn(
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      width: _bannerAd!.size.width.toDouble(),
+                                      height: _bannerAd!.size.height.toDouble(),
+                                      child: AdWidget(ad: _bannerAd!),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
                   },
                 ),
               ),
-
-              const Spacer(),
-
-              const SizedBox(height: 20),
-
-              // Stats Row
-              if (vpnState.stage == 'connected')
-                FadeInUp(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        StatusCard(
-                          title: "DOWNLOAD",
-                          value: vpnState.byteInTotal,
-                          icon: Icons.arrow_downward_rounded,
-                          color: _getStatusColor('connected'),
-                        ),
-                        StatusCard(
-                          title: "UPLOAD",
-                          value: vpnState.byteOutTotal,
-                          icon: Icons.arrow_upward_rounded,
-                          color: Colors.orangeAccent,
-                        ),
-                        StatusCard(
-                          title: "PING",
-                          value: "${vpnState.currentServer?.ping ?? 0} ms",
-                          icon: Icons.bolt_rounded,
-                          color: Colors.blueAccent,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              if (vpnState.stage != 'connected') const SizedBox(height: 80),
             ],
           ),
         ),
@@ -272,41 +531,5 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     String minutes = twoDigits(d.inMinutes.remainder(60));
     String seconds = twoDigits(d.inSeconds.remainder(60));
     return "$hours:$minutes:$seconds";
-  }
-
-  String _getDisplayStatus(String stage) {
-    switch (stage) {
-      case 'connected':
-        return "Connected";
-      case 'disconnected':
-        return "Disconnected";
-      case 'connecting':
-      case 'wait_connection':
-      case 'tcp_connect':
-      case 'authenticating':
-      case 'get_config':
-        return "Connecting";
-      case 'error':
-        return "Failed";
-      default:
-        return "Disconnected";
-    }
-  }
-
-  Color _getStatusColor(String stage) {
-    switch (stage) {
-      case 'connected':
-        return const Color(0xFF7ED9A7); // Soft Pastel Red
-      case 'connecting':
-      case 'wait_connection':
-      case 'tcp_connect':
-      case 'authenticating':
-      case 'get_config':
-        return const Color(0xFF8ECDF4);
-      case 'error':
-        return const Color(0xFFF28B82);
-      default:
-        return const Color(0xFFE6E8EB);
-    }
   }
 }

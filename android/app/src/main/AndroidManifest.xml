@@ -11,9 +11,9 @@
     </queries>
 
     <application
-        android:label="bagani_vpn"
+        android:label="BaganiVPN"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,6 +41,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        
+        <!-- AdMob App ID -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-6268832217143150~9763008559"/>
+        
+        <!-- AdMob Optimizations -->
+        <meta-data
+            android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION"
+            android:value="true"/>
+        <meta-data
+            android:name="com.google.android.gms.ads.flag.OPTIMIZE_AD_LOADING"
+            android:value="true"/>
         <service
             android:name="id.laskarmedia.openvpn_flutter.OpenVPNService"
             android:exported="true"
